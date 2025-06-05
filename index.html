@@ -343,10 +343,59 @@
 
         replacements.forEach(({source, target}) => {
             try {
-                // Escape special regex characters in the source
-                const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp(escapedSource, 'g');
-                resultText = resultText.replace(regex, target);
+                // Check if source is intended to be a regex (starts and ends with /)
+                const isRegex = source.startsWith('/') && source.length > 2;
+
+                if (isRegex) {
+                    // Extract regex pattern and flags
+                    const lastSlashIndex = source.lastIndexOf('/');
+                    if (lastSlashIndex > 0) {
+                        const pattern = source.substring(1, lastSlashIndex);
+                        const flags = source.substring(lastSlashIndex + 1);
+
+                        // Create the regex object
+                        const regex = new RegExp(pattern, flags);
+
+                        // Check if we need special handling for named groups or if target contains backreferences
+                        if (pattern.includes('?<') || target.includes('\\k<') || /\$\d/.test(target)) {
+                            // Use a function for replacement to handle all types of backreferences
+                            resultText = resultText.replace(regex, function () {
+                                let result = target;
+                                const groups = arguments[arguments.length - 1];
+
+                                // Handle numbered backreferences ($1, $2, etc.)
+                                for (let i = 1; i < arguments.length - 2; i++) {
+                                    const value = arguments[i] || '';
+                                    result = result.replace(new RegExp('\\$' + i, 'g'), value);
+                                }
+
+                                // Handle named backreferences (\k<name>)
+                                if (groups && typeof groups === 'object' && !Array.isArray(groups)) {
+                                    for (const [name, value] of Object.entries(groups)) {
+                                        if (value !== undefined) {
+                                            result = result.replace(new RegExp('\\\\k<' + name + '>', 'g'), value);
+                                        }
+                                    }
+                                }
+
+                                return result;
+                            });
+                        } else {
+                            // Standard regex replacement for simple cases
+                            resultText = resultText.replace(regex, target);
+                        }
+                    } else {
+                        // If format is incorrect, fall back to literal replacement
+                        const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(escapedSource, 'g');
+                        resultText = resultText.replace(regex, target);
+                    }
+                } else {
+                    // Use literal string replacement for non-regex patterns
+                    const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(escapedSource, 'g');
+                    resultText = resultText.replace(regex, target);
+                }
             } catch (error) {
                 console.error(`Error processing replacement: ${source} -> ${target}`, error);
             }
@@ -370,7 +419,8 @@
 </script>
 <footer>
     by <a href="https://www.christian-doebler.net/" target="_blank">Christian Doebler</a> (<a
-        href="https://github.com/cdoebler/text-replacement-tool" target="_blank">GitHub</a>)
+        href="https://github.com/cdoebler/text-replacement-tool" target="_blank">GitHub</a>, <a
+        href="https://github.com/cdoebler/text-replacement-tool/blob/master/README.md" target="_blank">Manual</a>)
 </footer>
 </body>
 </html>
